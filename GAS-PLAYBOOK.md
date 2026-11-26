@@ -337,6 +337,36 @@ prompting), and `ai/custom-func-*` for AI-backed custom Sheet functions.
 > If CoPilot uses the **Claude API** instead of Gemini, the structure is identical — Script-Properties
 > secret + `UrlFetchApp` POST; only the endpoint and request body change.
 
+### 6g. Adjacent self-hosted tools (candidates, not adopted)
+
+Open-source tools that sit **next to** Cockpit, not inside GAS. Nothing here is part of the current
+architecture. Record them so that a future decision starts from a known list, not a fresh search.
+**Check each project's current docs, license and API before you adopt it** — these notes were
+written from a quick review (2026-11), not an evaluation.
+
+| Tool | What it replaces | Where it could fit in Cockpit | Integration path |
+| --- | --- | --- | --- |
+| [`twentyhq/twenty`](https://github.com/twentyhq/twenty) | Salesforce (CRM) | **(a)** Reference data model for contacts, companies and deals when you design the Sheet tables (§6c). **(b)** A real back end if the Sheet outgrows its limits (see trigger below). | REST + GraphQL API with an API key. GAS: `UrlFetchApp` with the key in Script Properties (§6e). N8N: HTTP Request node. |
+| [`documenso/documenso`](https://github.com/documenso/documenso) | DocuSign (e-signature) | Send a contract for signature when a deal changes stage; write the signed status back to the Sheet. | Documenso API to create and send a document; Documenso **webhooks → N8N → GAS `doPost(e)`** (§6d) for the "signed" event. |
+| [`coollabsio/coolify`](https://github.com/coollabsio/coolify) | Vercel / Heroku (hosting) | Only if Cockpit self-hosts N8N. One server can then run N8N, Twenty and Documenso together. | Infrastructure only. No GAS code changes. |
+
+**When to look again at Twenty (the Sheet → CRM trigger).** Stay on the Sheet (§6c, §9 Storage
+choice) until one of these is true:
+
+- the data gets close to the Sheet cell limit, or batch reads start to push jobs toward the
+  6-min execution limit (§4);
+- `LockService` waits become frequent because N8N and GAS write at the same time;
+- you need relations (contact ↔ company ↔ deal) that are hard to keep correct across tabs;
+- you need per-user permissions on records, which a Sheet cannot give.
+
+If Cockpit moves to Twenty, keep the GAS side the same shape: replace the `readRows`/`appendRow`
+helpers with thin `UrlFetchApp` wrappers, so the sidebars and the SPA do not change.
+
+**Considered and rejected for Cockpit** (same review): `Fosowl/agenticSeek` (separate agent
+product), `D4Vinci/Scrapling` (gets around anti-bot blocks, which often breaks site terms of
+service), `OpenBB-finance/OpenBB` (market data, not needed), `myshell-ai/OpenVoice` (voice cloning,
+not needed, and needs the speaker's consent).
+
 ---
 
 ## 7. Coding conventions (adopt for Cockpit)
@@ -404,7 +434,7 @@ The repo ships a strong, portable toolchain worth replicating in Cockpit:
 | Small config / secrets | `PropertiesService` (Script/User/Document) |
 | Short-lived cache (≤6 hr) | `CacheService` |
 | Structured records / app data | the **Sheet** (batched) |
-| Relational / large | external SQL via `jdbc.gs` or an external API |
+| Relational / large | external SQL via `jdbc.gs` or an external API (CRM candidate: Twenty, §6g) |
 
 ---
 
@@ -420,3 +450,5 @@ When generating or reviewing Cockpit GAS code, an AI agent should:
 3. Apply the **§7 conventions** (JSDoc types, no decorative `try/catch`, optional chaining).
 4. Keep the Gmail/Calendar sidebars (CardService) and the web-app SPA (HtmlService) on their correct
    models — they are **not** interchangeable (§6a vs §6b).
+5. Treat the tools in **§6g as candidates only**. Do not add a dependency on them unless the user
+   decides to adopt one.
